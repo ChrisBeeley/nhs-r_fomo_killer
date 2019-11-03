@@ -1,36 +1,44 @@
 
 library(rtweet)
 library(tidyverse)
+library(wordcloud)
+library(tm)
 
-# tweets <- search_tweets(q = "NHSRconf2019", n = 100)
-# 
-# save(tweets, file = "tweetData.Rdata")
-
-load("tweetData.Rdata")
+if(file.info("tweetData.Rdata")$mtime < Sys.time() - 3600){
+  
+  tweets <- search_tweets(q = "NHSRconf2019", n = 1000)
+  
+  save(tweets, file = "tweetData.Rdata")
+} else {
+  
+  load("tweetData.Rdata")
+}
 
 function(input, output) {
   
+  twentyFourHourTweets <- reactive({
+    
+    tweets %>% 
+      filter(created_at > Sys.time() - 60 * 60 * 24)
+  })
+  
   output$numberOfTweets <- renderValueBox({
     
-    tweet_df <- tweets %>% 
-      filter(created_at > Sys.time() - 60 * 60 * 24)
-    
     valueBox(
-      nrow(tweet_df), HTML("Number of tweets in <br>last 24 hours"), icon = icon("clock"),
+      nrow(twentyFourHourTweets()), 
+      HTML("Number of tweets in <br>last 24 hours"), 
+      icon = icon("clock"),
       color = "green"
     )
   })
   
   output$mostFavourites <- renderValueBox({
     
-    tweet_df <- tweets %>% 
-      filter(created_at > Sys.time() - 60 * 60 * 24)
-    
     valueBox(
-      sum(tweet_df$favorite_count), 
+      sum(twentyFourHourTweets()$favorite_count), 
       HTML("Number of favourites<br>in last 24 hours"), icon = icon("clock"),
       color = "red"
-      )
+    )
   })
   
   output$recentText <- renderText({
@@ -50,4 +58,49 @@ function(input, output) {
     
     paste0("<p>", tweet_df$screen_name, ": ", tweet_df$text, "</p>")
   })
+  
+  # user tab
+  
+  output$numberOfUsers <- renderValueBox({
+    
+    twenty_four_hour_users <- twentyFourHourTweets() %>% 
+      filter(created_at > Sys.time() - 60 * 60 * 24) %>% 
+      group_by(screen_name) %>% 
+      nrow()
+
+    valueBox(
+      twenty_four_hour_users, 
+      HTML("Number of users<br>in last 24 hours"), icon = icon("clock"),
+      color = "red"
+    )
+  })
+  
+  output$topTweeter <- renderValueBox({
+    
+    top_tweeter <- twentyFourHourTweets() %>% 
+      group_by(screen_name) %>% 
+      count() %>% 
+      ungroup() %>% 
+      arrange(desc(n)) %>% 
+      slice(1) %>% 
+      pull(screen_name)
+    
+    valueBox(
+      top_tweeter, 
+      HTML("Top tweeter<br>in last 24 hours"), icon = icon("smile"),
+      color = "green"
+    )
+  })
+  
+  # wordcloud plot
+  
+  output$wordCloudPlot <- renderPlot({
+    
+    tweets_processed <- gsub("nhsrconf2019", "", tweets$text,
+                             ignore.case = TRUE)
+    
+    wordcloud(tweets_processed,
+              random.color = TRUE)
+  })
+  
 }
